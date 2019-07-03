@@ -17,7 +17,7 @@ import os
 import numpy as np
 import pandas as pd
 
-classes = 6
+classes = 5 #6
 dataset_dir = 'data/pkl/'
 save_dir = 'saved_models/'
 model_name = 'cnn_v1'
@@ -26,6 +26,12 @@ plotdir = 'plots/'
 # Load data
 test_dat = pd.read_pickle(dataset_dir + "dataset_test.pkl")
 print('Loading test data...')
+
+test_dat = test_dat.query("label!=3")
+slt = test_dat.label>3
+test_dat.loc[slt,"label"] -= 1
+test_dat.reset_index(drop=True,inplace=True)
+
 x_test, pid_test, en_test = [],[], []
 for i in range(len(test_dat)):
 #     print('Event number {}'.format(i))
@@ -38,7 +44,8 @@ en_test = np.array(en_test)
 pid_test = keras.utils.to_categorical(pid_test, num_classes=classes, dtype='float32')
 print('Test data loaded!')
 
-class_names = np.array(['gamma', 'electron', 'muon', 'tau', 'pion_n', 'pion_c'])
+#class_names = np.array(['gamma', 'electron', 'muon', 'tau', 'pion_n', 'pion_c'])
+class_names = np.array(['gamma', 'electron', 'muon', 'pion_n', 'pion_c'])
 
 # load model
 model = load_model(save_dir + model_name + '.h5')

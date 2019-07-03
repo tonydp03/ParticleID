@@ -81,20 +81,20 @@ print(en_test.shape)
 def shower_classification_model():
         input_img = Input(shape=(img_width, img_height, channels), name='input')
 
-        conv = Conv2D(3, (1,1), padding='same', data_format='channels_last', name='conv1')(input_img)
-        conv = Conv2D(16, (5,1), activation='relu', padding='same', data_format='channels_last', name='conv2')(conv)
-        conv = Conv2D(32, (3,3), activation='relu', padding='same', data_format='channels_last', name='conv3')(conv)
-        conv = Conv2D(64, (4,4), activation='relu', padding='same', data_format='channels_last', name='conv4')(conv)
+        conv = Conv2D(3, (1,1), padding='same', activation='relu', data_format='channels_last', name='conv1')(input_img)
+        conv = Conv2D(8, (5,1), activation='relu', padding='same', data_format='channels_last', name='conv2')(conv)
+        conv = Conv2D(8, (3,3), activation='relu', padding='same', data_format='channels_last', name='conv3')(conv)
+        conv = Conv2D(16, (4,4), activation='relu', padding='same', data_format='channels_last', name='conv4')(conv)
 
         flat = Flatten()(conv)
-        # bnorm = BatchNormalization()(flat)
+        bnorm = BatchNormalization()(flat)
 
-        dense = Dense(1024, activation='relu', name='dense1')(flat)
-        # drop = Dropout(0.5)(dense)
-        dense = Dense(128, activation='relu', name='dense2')(dense)#(drop)
-        # drop = Dropout(0.2)(dense)
+        dense = Dense(1024, activation='relu', name='dense1')(bnorm) #(flat)
+        drop = Dropout(0.5)(dense)
+        dense = Dense(128, activation='relu', name='dense2')(drop)
+        drop = Dropout(0.5)(dense)
 
-        pred = Dense(classes, activation='softmax', name='output')(dense)#(drop)
+        pred = Dense(classes, activation='softmax', name='output')(drop)
 
         model = Model(inputs=input_img, outputs=pred)
 
