@@ -1,5 +1,5 @@
 """
-Train a Convolutional Neural Network to classify Sentinel-2 images
+Train a Convolutional Neural Network for ParticleID & Energy Regression in CMS-HGCAL
 
 @author: Tony Di Pilato
 """
@@ -24,7 +24,7 @@ channels = 3
 img_height = 30
 img_width = 50
 classes = 6
-epochs = 50
+epochs = 15
 dataset_dir = 'data/pkl/'
 save_dir = 'saved_models/'
 model_name = 'cnn_v1'
@@ -84,18 +84,19 @@ print(en_test.shape)
 
 
 def shower_classification_model():
-    input_img = Input(shape=(img_width, img_height, channels), name='input')
-    bnorm = BatchNormalization()(input_img)
-    
-    conv = Conv2D(16, (5,3), activation='relu', padding='same', data_format='channels_last', name='conv1')(bnorm)
+        input_img = Input(shape=(img_width, img_height, channels), name='input')
+        conv = Conv2D(3, (1,1), padding='same', data_format='channels_last', name='conv0')(input_img)
+        bnorm = BatchNormalization()(input_img)
+
+        conv = Conv2D(3, (5,1), activation='relu', padding='same', data_format='channels_last', name='conv1')(conv)
 #    bnorm = BatchNormalization()(conv)
 #    pool = MaxPooling2D(pool_size=(2, 2), data_format='channels_last', name='pool1')(bnorm)
 
-    conv = Conv2D(16, (4,4), activation='relu', padding='same', data_format='channels_last', name='conv2')(conv)
+        conv = Conv2D(6, (5,5), activation='relu', padding='same', data_format='channels_last', name='conv2')(conv)
 #    bnorm = BatchNormalization()(conv)
 #    pool = MaxPooling2D(pool_size=(2, 2), data_format='channels_last', name='pool2')(bnorm)
 
-    conv = Conv2D(32, (5,5), activation='relu', padding='same', data_format='channels_last', name='conv3')(conv)
+        conv = Conv2D(12, (3,3), activation='relu', padding='same', data_format='channels_last', name='conv3')(conv)
 #    bnorm = BatchNormalization()(conv)
 #    pool = MaxPooling2D(pool_size=(2, 2), data_format='channels_last', name='pool3')(bnorm)
 
@@ -107,23 +108,23 @@ def shower_classification_model():
 #     bnorm = BatchNormalization()(conv)
 #     pool = MaxPooling2D(pool_size=(2, 2), data_format='channels_last', name='pool2')(bnorm)
 
-    flat = Flatten()(conv)
+        flat = Flatten()(conv)
 
-    dense = Dense(32, activation='relu', name='dense1')(flat)
+        dense = Dense(128, activation='relu', name='dense1')(flat)
 #    dense = Dense(32, activation='sigmoid', name='dense2')(dense)
-    pred = Dense(classes, activation='softmax', name='output')(dense)
+        pred = Dense(classes, activation='softmax', name='output')(dense)
 
-    model = Model(inputs=input_img, outputs=pred)
+        model = Model(inputs=input_img, outputs=pred)
 
 
-    model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
-    return model
+        model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+        return model
 
 print('Creating model...')
 model = shower_classification_model()
 model.summary()
 
-history = model.fit(x_train, pid_train, batch_size=batch_size, epochs=epochs, validation_split=0.1, shuffle=True, verbose=1)
+history = model.fit(x_train, pid_train, batch_size=batch_size, epochs=epochs, validation_split=0.1, callbacks=[EarlyStopping(monitor='val_loss', patience=10, verbose=1, restore_best_weights=True)], shuffle=True, verbose=1)
 history_save = pd.DataFrame(history.history).to_hdf(save_dir + history_name + ".h5", "history", append=False)
 
 
@@ -155,7 +156,6 @@ tf.train.write_graph(frozen_graph, save_dir, model_name + ".pb", as_text=False)
 print('Model saved')
 
 # Score trained model
-
 
 scores = model.evaluate(x_test, pid_test, verbose=1)
 print('Test loss:', scores[0])
