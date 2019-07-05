@@ -18,9 +18,12 @@ import numpy as np
 import pandas as pd
 
 classes = 4 #5 #6
+img_height = 30
+img_width = 50
 dataset_dir = 'data/pkl/'
 save_dir = 'saved_models/'
-model_name = 'full_model' #'pid'  #cnn_v1'
+pid_model_name = 'pid'
+enreg_model_name = 'enreg'
 plotdir = 'plots/'
 
 # Load data
@@ -57,11 +60,20 @@ x_test = x_test[0]
 pid_test.append(test_dat.label)
 pid_test = np.array(pid_test)
 pid_test = pid_test[0]
+
+pid_test_label = pid_test
 pid_test = keras.utils.to_categorical(pid_test, num_classes=classes, dtype='float32')
 
 en_test.append(test_dat.gen_energy)
 en_test = np.array(en_test)
 en_test = en_test[0]
+
+gamma_true_en = en_test[pid_test_label==0]
+electron_true_en = en_test[pid_test_label==1]
+muon_true_en = en_test[pid_test_label==2]
+pion_c_true_en = en_test[pid_test_label==3]
+
+
 
 # for i in range(len(test_dat)):
 #     x_test.append(test_dat.loc[i].feature)
@@ -83,7 +95,7 @@ print(en_test.shape)
 class_names = np.array(['gamma', 'electron', 'muon', 'pion_c'])
 
 # load model
-model = load_model(save_dir + model_name + '.h5')
+model = load_model(save_dir + pid_model_name + '.h5')
 
 # score trained model
 scores = model.evaluate(x_test, pid_test, verbose=1)
@@ -99,11 +111,11 @@ print('Predicted labels: ', pred)
 print(np.unique(true))
 print(np.unique(pred))
 
-def plot_confusion_matrix(cm, classes, normalize=True, title='Confusion matrix', cmap=plt.cm.Blues):
+def plot_confusion_matrix(cm, classes, normalize=True, title='Normalized confusion matrix', cmap=plt.cm.Blues):
     
     if normalize:
         cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-        print("Confusion matrix")
+        print("Normalized confusion matrix")
     else:
         print('Confusion matrix, without normalization')
 
@@ -130,11 +142,61 @@ cnf_matrix = confusion_matrix(true, pred)
 np.set_printoptions(precision=2)
 
 # Plot normalized confusion matrix
-plt.figure()
-plot_confusion_matrix(cnf_matrix, classes=class_names, normalize=True, title='Confusion matrix')
+plt.figure(0)
+plot_confusion_matrix(cnf_matrix, classes=class_names, normalize=True, title='Normalized confusion matrix')
 
 plt.savefig(plotdir + 'confusion_matrix.png')
 plt.show()
 
+model_2 = load_model(save_dir + enreg_model_name + '.h5')
+reco_en_test = x_test[:,:,:,0]
+reco_en_test = reco_en_test.reshape(-1, img_height*img_width)
+
+en_results = model_2.predict([reco_en_test, y_pred])
+
+gamma_reco_en = en_results[pid_test_label==0]
+electron_reco_en = en_results[pid_test_label==1]
+muon_reco_en = en_results[pid_test_label==2]
+pion_c_reco_en = en_results[pid_test_label==3]
+
+#gamma's energy
+fig1 = plt.figure(1)
+plt.scatter(gamma_true_en, gamma_reco_en, color='red')
+plt.plot([0,0],[450,450], color="black", linestyle='solid')
+plt.title('Gamma Energy Regression', y=1.04)
+plt.xlabel('True Energy', labelpad=8, fontsize=14)
+plt.ylabel('Predicted Energy', labelpad=10, fontsize=14)
+plt.savefig(plotdir + 'gammaEn.png')
+fig1.show()
+
+#electron's energy
+fig2 = plt.figure(2)
+plt.scatter(electron_true_en, electron_reco_en, color='blue')
+plt.plot([0,0],[450,450], color="black", linestyle='-')
+plt.title('Electron Energy Regression', y=1.04)
+plt.xlabel('True Energy', labelpad=8, fontsize=14)
+plt.ylabel('Predicted Energy', labelpad=10, fontsize=14)
+plt.savefig(plotdir + 'electronEn.png')
+fig2.show()
+
+#muon's energy
+fig3 = plt.figure(3)
+plt.scatter(muon_true_en, muon_reco_en, color='green')
+plt.plot([0,0],[450,450], color="black", linestyle='-')
+plt.title('Muon Energy Regression', y=1.04)
+plt.xlabel('True Energy', labelpad=8, fontsize=14)
+plt.ylabel('Predicted Energy', labelpad=10, fontsize=14)
+plt.savefig(plotdir + 'muonEn.png')
+fig1.show()
+
+#pion_c's energy
+fig4 = plt.figure(4)
+plt.scatter(pion_c_true_en, pion_c_reco_en, color='violet')
+plt.plot([0,0],[450,450], color="black", linestyle='-')
+plt.title('Charged Pion Energy Regression', y=1.04)
+plt.xlabel('True Energy', labelpad=8, fontsize=14)
+plt.ylabel('Predicted Energy', labelpad=10, fontsize=14)
+plt.savefig(plotdir + 'pion_cEn.png')
+fig4.show()
 
 print('Done!')
