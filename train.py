@@ -27,10 +27,13 @@ classes = 4 #5 #6
 epochs = 100 #15
 dataset_dir = 'data/pkl/'
 save_dir = 'saved_models/'
-pid_model_name = 'pid'
-pid_history_name = 'pid_history'
-enreg_model_name = 'enreg'
-enreg_history_name = 'enreg_history'
+# pid_model_name = 'pid'
+# pid_history_name = 'pid_history'
+# enreg_model_name = 'enreg'
+# enreg_history_name = 'enreg_history'
+
+model_name='full_model'
+history_name='full_model_history'
 
 # Load the data
 train_dat = pd.read_pickle(dataset_dir + "dataset_train.pkl")
@@ -60,6 +63,15 @@ pid_train = keras.utils.to_categorical(pid_train, num_classes=classes, dtype='fl
 en_train.append(train_dat.gen_energy)
 en_train = np.array(en_train)
 en_train = en_train[0]
+
+####### NORMALIZE THE ENERGY ########
+
+mean_en = np.mean(en_train)
+std_en = np.std(en_train)
+print('Mean Energy Value: {}'.format(mean_en))
+print('Std Energy Value: {}'.format(std_en))
+
+en_train_norm = (en_train - mean_en)/std_en
 
 # for i in range(len(train_dat)):
 # #     print('Event number {}'.format(i))
@@ -101,6 +113,9 @@ pid_test = keras.utils.to_categorical(pid_test, num_classes=classes, dtype='floa
 en_test.append(test_dat.gen_energy)
 en_test = np.array(en_test)
 en_test = en_test[0]
+
+####### NORMALIZE THE ENERGY ########
+en_test_norm = (en_test - mean_en)/std_en
 
 # for i in range(len(test_dat)):
 #     x_test.append(test_dat.loc[i].feature)
@@ -189,8 +204,9 @@ def shower_classification_model_V2():
 
 def pid_and_er_model():
         input_img = Input(shape=(img_width, img_height, channels), name='input')
-
-        conv = Conv2D(3, (3,3), activation='relu', padding='same', data_format='channels_last', name='conv1')(input_img)
+        
+        bnorm = BatchNormalization()(input_img)
+        conv = Conv2D(3, (5,1), activation='relu', padding='same', data_format='channels_last', name='conv1')(bnorm)
         # pool = MaxPooling2D(pool_size=(2, 2), data_format='channels_last', name='pool1')(conv)
 
         conv = Conv2D(3, (3,3), activation='relu', padding='same', data_format='channels_last', name='conv2')(conv) #(pool)
@@ -300,19 +316,47 @@ def energy_regression_model_V3():
         model.compile(loss='mse', optimizer='adam') #,metrics=['mse'])
         return model
 
+def full_model():
+        input_img = Input(shape=(img_width, img_height, channels), name='input')
+        
+        bnorm = BatchNormalization()(input_img)
+        conv = Conv2D(3, (5,1), activation='relu', padding='same', kernel_initializer='random_uniform', data_format='channels_last', name='conv1')(bnorm)
+        conv = Conv2D(3, (3,3), activation='relu', padding='same', kernel_initializer='random_uniform', data_format='channels_last', name='conv2')(conv)
+        conv = Conv2D(3, (3,3), activation='relu', padding='same', kernel_initializer='random_uniform', data_format='channels_last', name='conv3')(conv)
+
+        flat = Flatten()(conv)
+        # bnorm = BatchNormalization()(flat)
+
+        dense = Dense(1024, activation='relu', kernel_initializer='random_uniform', name='dense1')(flat)
+        dense = Dense(256, activation='relu', kernel_initializer='random_uniform', name='dense2')(dense)
+
+        dense_id = Dense(64, activation='relu', kernel_initializer='random_uniform', name='dense_id1')(dense)
+        dense_id = Dense(16, activation='relu', kernel_initializer='random_uniform', name='dense_id2')(dense_id)
+        pid = Dense(classes, activation='softmax', kernel_initializer='random_uniform', name='pid_output')(dense_id)
+
+        dense_er = Dense(64, activation='relu', kernel_initializer='random_uniform', name='dense_er1')(dense)
+        dense_er = Dense(8, activation='relu', kernel_initializer='random_uniform', name='dense_er2')(dense_er)
+        enreg = Dense(1, name='enreg_output')(dense_er)
+
+        model = Model(inputs=input_img, outputs=[pid, enreg])
+
+        # opt = optimizers.Adam(lr=0.01)
+        model.compile(loss={'pid_output': 'categorical_crossentropy', 'enreg_output': 'mse'}, loss_weights={'pid_output': 1, 'enreg_output': 2}, optimizer='adam', metrics={'pid_output': 'accuracy', 'enreg_output': 'mse'})
+        return model
+
 print('Creating model...')
-model = shower_classification_model()
-# model = pid_and_er_model()
+# model = shower_classification_model()
+model = full_model()
 model.summary()
 
-history = model.fit(x_train, pid_train, batch_size=batch_size, epochs=10, validation_split=0.1, callbacks=[EarlyStopping(monitor='val_loss', patience=5, verbose=1, restore_best_weights=True)], shuffle=True, verbose=1)
+# history = model.fit(x_train, pid_train, batch_size=batch_size, epochs=10, validation_split=0.1, callbacks=[EarlyStopping(monitor='val_loss', patience=5, verbose=1, restore_best_weights=True)], shuffle=True, verbose=1)
 
-# history = model.fit(x_train, {'pid_output': pid_train, 'enreg_output': en_train}, batch_size=batch_size, epochs=epochs, validation_split=0.1, callbacks=[EarlyStopping(monitor='val_loss', patience=10, verbose=1, restore_best_weights=True)], shuffle=True, verbose=1)
-history_save = pd.DataFrame(history.history).to_hdf(save_dir + pid_history_name + ".h5", "history", append=False)
+history = model.fit(x_train, {'pid_output': pid_train, 'enreg_output': en_train_norm}, batch_size=batch_size, epochs=epochs, validation_split=0.1, callbacks=[EarlyStopping(monitor='val_loss', patience=10, verbose=1, restore_best_weights=True)], shuffle=True, verbose=1)
+history_save = pd.DataFrame(history.history).to_hdf(save_dir + history_name + ".h5", "history", append=False)
 
 
 # Save model and weights
-model.save(save_dir + pid_model_name + ".h5")
+model.save(save_dir + model_name + ".h5")
 print('Saved trained model at %s ' % save_dir)
 
 # save the frozen model
@@ -333,57 +377,69 @@ def freeze_session(session, keep_var_names=None, output_names=None, clear_device
 
 frozen_graph = freeze_session(K.get_session(),
                               output_names=[out.op.name for out in model.outputs])
-tf.train.write_graph(frozen_graph, save_dir, pid_model_name + ".pbtxt", as_text=True)
-tf.train.write_graph(frozen_graph, save_dir, pid_model_name + ".pb", as_text=False)
+tf.train.write_graph(frozen_graph, save_dir, model_name + ".pbtxt", as_text=True)
+tf.train.write_graph(frozen_graph, save_dir, model_name + ".pb", as_text=False)
 
 print('Model saved')
 
 # Score trained model
 
-scores = model.evaluate(x_test, pid_test, verbose=1)
-pid_pred = model.predict(x_train)
-# scores = model.evaluate(x_test, {'pid_output': pid_test, 'enreg_output': en_test}, verbose=1)
+# scores = model.evaluate(x_test, pid_test, verbose=1)
+# pid_pred = model.predict(x_train)
+scores = model.evaluate(x_test, {'pid_output': pid_test, 'enreg_output': en_test_norm}, verbose=1)
+print("Scores: {}".format(scores))
 
-reco_en_train = x_train[:,:,:,0]
-print('Reco En shape: ', reco_en_train.shape)
-reco_en_train = reco_en_train.reshape(-1, img_height*img_width)
-# reco_en_train = np.sum(reco_en_train, axis=1)
-print('Reco En shape: ', reco_en_train.shape)
-print('Reco En value: ', reco_en_train)
+# reco_en_train = x_train[:,:,:,0]
+# print('Reco En shape: ', reco_en_train.shape)
+# reco_en_train = reco_en_train.reshape(-1, img_height*img_width)
+# # reco_en_train = np.sum(reco_en_train, axis=1)
+# print('Reco En shape: ', reco_en_train.shape)
+# print('Reco En value: ', reco_en_train)
 
-print('Creating second model...')
+# print('Creating second model...')
+# # model_2 = energy_regression_model_V2()
 # model_2 = energy_regression_model_V2()
-model_2 = energy_regression_model_V2()
-model_2.summary()
+# model_2.summary()
 
-# history_2 = model_2.fit([x_train, pid_pred], en_train, batch_size=batch_size, epochs=epochs, validation_split=0.1,callbacks=[EarlyStopping(monitor='val_loss', patience=5, verbose=1, restore_best_weights=True)], shuffle=True, verbose=1)
-history_2 = model_2.fit([reco_en_train, pid_pred], en_train, batch_size=batch_size, epochs=epochs, validation_split=0.1,callbacks=[EarlyStopping(monitor='val_loss', patience=5, verbose=1, restore_best_weights=True)], shuffle=True, verbose=1)
-history_save_2 = pd.DataFrame(history_2.history).to_hdf(save_dir + enreg_history_name + ".h5", "history", append=False)
+# # history_2 = model_2.fit([x_train, pid_pred], en_train, batch_size=batch_size, epochs=epochs, validation_split=0.1,callbacks=[EarlyStopping(monitor='val_loss', patience=5, verbose=1, restore_best_weights=True)], shuffle=True, verbose=1)
+# history_2 = model_2.fit([reco_en_train, pid_pred], en_train, batch_size=batch_size, epochs=epochs, validation_split=0.1,callbacks=[EarlyStopping(monitor='val_loss', patience=5, verbose=1, restore_best_weights=True)], shuffle=True, verbose=1)
+# history_save_2 = pd.DataFrame(history_2.history).to_hdf(save_dir + enreg_history_name + ".h5", "history", append=False)
 
-# Save model and weights
-model_2.save(save_dir + enreg_model_name + ".h5")
-print('Saved trained model 2 at %s ' % save_dir)
+# # Save model and weights
+# model_2.save(save_dir + enreg_model_name + ".h5")
+# print('Saved trained model 2 at %s ' % save_dir)
 
-frozen_graph_2 = freeze_session(K.get_session(),
-                              output_names=[out.op.name for out in model_2.outputs])
-tf.train.write_graph(frozen_graph_2, save_dir, enreg_model_name + ".pbtxt", as_text=True)
-tf.train.write_graph(frozen_graph_2, save_dir, enreg_model_name + ".pb", as_text=False)
+# frozen_graph_2 = freeze_session(K.get_session(),
+#                               output_names=[out.op.name for out in model_2.outputs])
+# tf.train.write_graph(frozen_graph_2, save_dir, enreg_model_name + ".pbtxt", as_text=True)
+# tf.train.write_graph(frozen_graph_2, save_dir, enreg_model_name + ".pb", as_text=False)
 
-print('Model 2 saved')
+# print('Model 2 saved')
 
-reco_en_test = x_test[:,:,:,0]
-print('Reco En Test shape: ', reco_en_test.shape)
-reco_en_test = reco_en_test.reshape(-1, img_height*img_width)
-# reco_en_test = np.sum(reco_en_test, axis=1)
-print('Reco En Test shape: ', reco_en_test.shape)
-print('Reco En Test value: ', reco_en_test)
+# reco_en_test = x_test[:,:,:,0]
+# print('Reco En Test shape: ', reco_en_test.shape)
+# reco_en_test = reco_en_test.reshape(-1, img_height*img_width)
+# # reco_en_test = np.sum(reco_en_test, axis=1)
+# print('Reco En Test shape: ', reco_en_test.shape)
+# print('Reco En Test value: ', reco_en_test)
 
-pid_results = model.predict(x_test)
+results = model.predict(x_test)
 
-energy_results = model_2.predict([reco_en_test, pid_results])
+# energy_results = model_2.predict([reco_en_test, pid_results])
 print('*****************')
+
+print('****** PID START*******')
+print('True Particle IDs= {} '.format(pid_test))
+pid_results = results[0]
+print('Predicted Particle IDs= {} '.format(pid_results))
+print('****** PID END*******')
+
+print('****** ENREG START*******')
 print('True Particle Energies= {} '.format(en_test))
-print('Predicted Particle Energies= {}'.format(energy_results))
+enreg_results = results[1]
+enreg_results = (enreg_results * std_en) + mean_en
+print('Predicted Particle Energies= {}'.format(enreg_results))
+print('****** ENREG END*******')
 
 # print('True Particle 0 PID= {}'.format(np.argmax(pid_test, axis=1)))
 # print('Predicted Particle 0 PID= {}'.format(np.argmax(results[0], axis=1)))

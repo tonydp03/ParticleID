@@ -22,8 +22,9 @@ img_height = 30
 img_width = 50
 dataset_dir = 'data/pkl/'
 save_dir = 'saved_models/'
-pid_model_name = 'pid'
-enreg_model_name = 'enreg'
+# pid_model_name = 'pid'
+# enreg_model_name = 'enreg'
+model_name = 'full_model'
 plotdir = 'plots/'
 
 # Load data
